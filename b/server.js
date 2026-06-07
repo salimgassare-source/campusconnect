@@ -11,15 +11,28 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Database connection
+
+// Database connection - FIXED
 const db = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'campusconnect',
+    host: 'acela.proxy.rlwy.net',
+    port: 21461,
+    user: 'root',
+    password: 'KCtROLyyShBxhBuYFHzOlARhFhLHpsGC',
+    database: 'railway',
     waitForConnections: true,
-    connectionLimit: 10
+    connectionLimit: 10,
+    ssl: false
 }).promise();
+
+// Test database connection on startup
+(async function testDbConnection() {
+    try {
+        const [result] = await db.query('SELECT 1 as connected');
+        console.log('✅ Database connected successfully!');
+    } catch (error) {
+        console.error('❌ Database connection failed:', error.message);
+    }
+})();
 
 
 // ============ AUTHENTICATION MIDDLEWARE ============

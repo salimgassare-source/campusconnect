@@ -21,6 +21,7 @@ const db = mysql.createPool({
     connectionLimit: 10
 }).promise();
 
+
 // ============ AUTHENTICATION MIDDLEWARE ============
 const authenticate = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -356,6 +357,31 @@ app.get('/api/v1/admin/stats', authenticate, async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
+});
+
+app.get('/api/v1/test-railway', async (req, res) => {
+    const net = require('net');
+    const host = 'acela.proxy.rlwy.net';
+    const port = 21461;
+    
+    const socket = new net.Socket();
+    socket.setTimeout(5000);
+    
+    socket.on('connect', () => {
+        socket.destroy();
+        res.json({ success: true, message: `Can reach ${host}:${port}` });
+    });
+    
+    socket.on('error', (err) => {
+        res.json({ success: false, message: err.message });
+    });
+    
+    socket.on('timeout', () => {
+        socket.destroy();
+        res.json({ success: false, message: 'Connection timeout' });
+    });
+    
+    socket.connect(port, host);
 });
 
 // ============ ERROR HANDLER ============

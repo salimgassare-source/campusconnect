@@ -173,6 +173,148 @@ app.get('/api/v1/users/events', async (req, res) => {
     }
 });
 
+// ============ RESOURCES ============
+app.get('/api/v1/resources', async (req, res) => {
+    try {
+        const [resources] = await db.query('SELECT * FROM resources');
+        res.json({ success: true, data: resources });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============ BOOKINGS ============
+app.post('/api/v1/bookings', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'No token provided' });
+        }
+        
+        const decoded = jwt.verify(token, 'secretkey123');
+        const userId = decoded.userId;
+        const { resource_id, booking_date, start_time, end_time, purpose } = req.body;
+        
+        const [result] = await db.query(
+            'INSERT INTO bookings (user_id, resource_id, booking_date, start_time, end_time, purpose) VALUES (?, ?, ?, ?, ?, ?)',
+            [userId, resource_id, booking_date, start_time, end_time, purpose]
+        );
+        
+        res.json({ success: true, message: 'Booking created', data: { id: result.insertId } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/v1/users/bookings', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'No token provided' });
+        }
+        
+        const decoded = jwt.verify(token, 'secretkey123');
+        const userId = decoded.userId;
+        
+        const [bookings] = await db.query('SELECT * FROM bookings WHERE user_id = ? ORDER BY booking_date DESC', [userId]);
+        res.json({ success: true, data: bookings });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============ ADMIN DASHBOARD STATS ============
+app.get('/api/v1/admin/stats', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Not authorized' });
+        }
+        
+        const decoded = jwt.verify(token, 'secretkey123');
+        const [requester] = await db.query('SELECT role FROM users WHERE id = ?', [decoded.userId]);
+        
+        if (requester[0].role !== 'university_admin') {
+            return res.status(403).json({ success: false, message: 'Admin access required' });
+        }
+        
+        const [totalEvents] = await db.query('SELECT COUNT(*) as count FROM events');
+        const [totalUsers] = await db.query('SELECT COUNT(*) as count FROM users');
+        const [totalRegistrations] = await db.query('SELECT COUNT(*) as count FROM event_registrations');
+        const [popularEvents] = await db.query(`
+            SELECT e.title, e.capacity, COUNT(er.id) as registrations
+            FROM events e
+            LEFT JOIN event_registrations er ON e.id = er.event_id
+            GROUP BY e.id
+            ORDER BY registrations DESC
+            LIMIT 5
+        `);
+        
+        res.json({
+            success: true,
+            data: {
+                totalEvents: totalEvents[0].count,
+                totalUsers: totalUsers[0].count,
+                totalRegistrations: totalRegistrations[0].count,
+                popularEvents
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============ GET ALL USERS (ADMIN ONLY) ============
+app.get('/api/v1/admin/users', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Not authorized' });
+        }
+        
+        const decoded = jwt.verify(token, 'secretkey123');
+        const [requester] = await db.query('SELECT role FROM users WHERE id = ?', [decoded.userId]);
+        
+        if (requester[0].role !== 'university_admin') {
+            return res.status(403).json({ success: false, message: 'Admin access required' });
+        }
+        
+        const [users] = await db.query('SELECT id, name, email, role, created_at FROM users ORDER BY id DESC');
+        res.json({ success: true, data: users });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============ MAKE USER ADMIN (ADMIN ONLY) ============
+app.post('/api/v1/admin/make-admin', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const token = req.headers.authorization?.split(' ')[1];
+        
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Not authorized' });
+        }
+        
+        const decoded = jwt.verify(token, 'secretkey123');
+        const [requester] = await db.query('SELECT role FROM users WHERE id = ?', [decoded.userId]);
+        
+        if (requester[0].role !== 'university_admin') {
+            return res.status(403).json({ success: false, message: 'Admin access required' });
+        }
+        
+        const [result] = await db.query('UPDATE users SET role = "university_admin" WHERE email = ?', [email]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        
+        res.json({ success: true, message: `${email} is now an admin!` });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
 // ============ START SERVER ============
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {

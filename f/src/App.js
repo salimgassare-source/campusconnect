@@ -16,6 +16,8 @@ function App() {
     const [course, setCourse] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [allUsers, setAllUsers] = useState([]);
+    const [makeAdminEmail, setMakeAdminEmail] = useState('');
     
     // Create event form state
     const [newEvent, setNewEvent] = useState({
@@ -43,10 +45,11 @@ function App() {
         totalEvents: 0,
         totalUsers: 0,
         totalRegistrations: 0,
-        popularEvents: []
+        popularEvents: [],
+        users: []
     });
 
-    const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api/v1';
+    const API_URL = 'https://campusconnect-1-867z.onrender.com/api/v1';
 
     useEffect(() => {
         const token = localStorage.getItem('token');
@@ -60,6 +63,7 @@ function App() {
             fetchMyBookings(token);
             if (userData.role === 'university_admin') {
                 fetchDashboardStats(token);
+                fetchAllUsers(token);
             }
         }
     }, []);
@@ -118,9 +122,49 @@ function App() {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
-            if (data.success) setDashboardStats(data.data);
+            if (data.success) setDashboardStats(prev => ({ ...prev, ...data.data }));
         } catch (error) {
             console.error('Error fetching stats:', error);
+        }
+    };
+
+    const fetchAllUsers = async (token) => {
+        try {
+            const response = await fetch(`${API_URL}/admin/users`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await response.json();
+            if (data.success) setDashboardStats(prev => ({ ...prev, users: data.data }));
+        } catch (error) {
+            console.error('Error fetching users:', error);
+        }
+    };
+
+    const handleMakeAdmin = async () => {
+        if (!makeAdminEmail) {
+            alert('Please enter an email address');
+            return;
+        }
+        const token = localStorage.getItem('token');
+        try {
+            const response = await fetch(`${API_URL}/admin/make-admin`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ email: makeAdminEmail })
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(data.message);
+                setMakeAdminEmail('');
+                fetchAllUsers(token);
+            } else {
+                alert(data.message);
+            }
+        } catch (error) {
+            alert('Failed to make admin');
         }
     };
 
@@ -144,6 +188,7 @@ function App() {
                 fetchMyBookings(data.data.token);
                 if (data.data.role === 'university_admin') {
                     fetchDashboardStats(data.data.token);
+                    fetchAllUsers(data.data.token);
                 }
             } else {
                 setError(data.message);
@@ -528,12 +573,12 @@ function App() {
                             <div className="events-grid">
                                 {myBookings.map((booking) => (
                                     <div key={booking.id} className="event-card">
-                                        <h3>{booking.resource_name}</h3>
+                                        <h3>{booking.resource_name || 'Resource'}</h3>
                                         <div className="event-details">
                                             <p><span className="emoji">📅</span> Date: {new Date(booking.booking_date).toLocaleDateString()}</p>
                                             <p><span className="emoji">⏰</span> Time: {booking.start_time} - {booking.end_time}</p>
                                             <p><span className="emoji">📝</span> Purpose: {booking.purpose}</p>
-                                            <p><span className="emoji">✅</span> Status: <span className={`status-${booking.status}`}>{booking.status}</span></p>
+                                            <p><span className="emoji">✅</span> Status: {booking.status}</p>
                                         </div>
                                         {booking.status === 'pending' && (
                                             <button onClick={() => cancelBooking(booking.id)} className="cancel-btn">
@@ -606,7 +651,7 @@ function App() {
                     </>
                 )}
 
-                {/* Dashboard Tab */}
+                {/* Dashboard Tab with Admin Management */}
                 {activeTab === 'dashboard' && user.role === 'university_admin' && (
                     <>
                         <h2>📊 Admin Dashboard</h2>
@@ -634,6 +679,27 @@ function App() {
                             </div>
                         </div>
 
+                        {/* Make Admin Section */}
+                        <div style={{ background: 'white', padding: '20px', borderRadius: '15px', marginBottom: '30px' }}>
+                            <h3 style={{ marginBottom: '15px' }}>👑 Make Someone Admin</h3>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                <input 
+                                    type="email" 
+                                    placeholder="Enter email address"
+                                    value={makeAdminEmail}
+                                    onChange={(e) => setMakeAdminEmail(e.target.value)}
+                                    style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #ddd', fontSize: '14px' }}
+                                />
+                                <button 
+                                    onClick={handleMakeAdmin}
+                                    style={{ padding: '12px 24px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                                >
+                                    Make Admin
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Popular Events Section */}
                         <h3>🔥 Popular Events</h3>
                         {dashboardStats.popularEvents?.length === 0 ? (
                             <p>No registrations yet.</p>
@@ -656,6 +722,19 @@ function App() {
                                 ))}
                             </div>
                         )}
+
+                        {/* All Users Section */}
+                        <h3 style={{ marginTop: '40px' }}>📋 All Users</h3>
+                        <div className="events-grid" style={{ marginTop: '20px' }}>
+                            {dashboardStats.users?.map((u) => (
+                                <div key={u.id} className="event-card">
+                                    <h4>{u.name}</h4>
+                                    <p>Email: {u.email}</p>
+                                    <p>Role: <strong style={{ color: u.role === 'university_admin' ? '#e74c3c' : '#667eea' }}>{u.role}</strong></p>
+                                    <p>Joined: {new Date(u.created_at).toLocaleDateString()}</p>
+                                </div>
+                            ))}
+                        </div>
                     </>
                 )}
             </div>
